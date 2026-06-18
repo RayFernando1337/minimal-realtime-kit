@@ -18,12 +18,19 @@ import AVFoundation
 
 @AIProxyActor
 final class RealtimeManager {
-    // MARK: - Injected dependencies (both Sendable; default to the v1 paste-key path)
+    // MARK: - Injected dependencies (all Sendable; default to the v1 paste-key path)
     private let provider: RealtimeCredentialProvider
     private let personality: Personality
+    /// Fulfills `web_search` (a deferred CLIENT tool — NOT the SDK's hosted `.webSearch`).
+    /// Defaults to the stub that returns a graceful "unconfigured" envelope; inject your own to
+    /// add real search. Internal so the tool-dispatch extension can reach it. (SPEC N1: keep any
+    /// key in the Keychain, never here.)
+    let webSearch: WebSearchProvider
 
     // MARK: - Live session + audio (owned here — N4; a view/VC must never touch these)
-    private var realtimeSession: OpenAIRealtimeSession?
+    // `realtimeSession` is internal (not private) so the tool-dispatch extension in
+    // RealtimeManager+Tools.swift can reach it (sendUserChoice / sendContextUpdate).
+    var realtimeSession: OpenAIRealtimeSession?
     private var audioController: AudioController?
 
     // MARK: - UI bridge (N5) — `nonisolated` so the @MainActor drainer reads without hopping
@@ -35,9 +42,10 @@ final class RealtimeManager {
     // MARK: - Turn / lifecycle bookkeeping
     private var lastState: PebblesState?
     private var muted = false
-    /// True between a send and `.responseDone`/`.error`. Set BEFORE the greeting send so the
-    /// pre-round-trip window can't double-fire alongside server-VAD's auto-response.
-    private var responseInFlight = false
+    /// True between a send and `.responseDone`/`.error`. Set BEFORE every send so the
+    /// pre-round-trip window can't double-fire alongside server-VAD's auto-response. Internal
+    /// (not private) so the tool-dispatch extension sets it before its sends (SPEC N2).
+    var responseInFlight = false
     /// "Stop always wins" guard: bumped before any `await` (and on stop). Every gate compares
     /// to a per-connect snapshot, so a superseded connect tears itself down instead of greeting.
     private var sessionGeneration = 0
@@ -46,20 +54,25 @@ final class RealtimeManager {
 
     nonisolated init(
         provider: RealtimeCredentialProvider = PastedKeyProvider(),
-        personality: Personality = .default
+        personality: Personality = .default,
+        webSearch: WebSearchProvider = UnconfiguredWebSearchProvider()
     ) {
         self.provider = provider
         self.personality = personality
+        self.webSearch = webSearch
         (events, eventContinuation) = AsyncStream.makeStream(of: PebblesEvent.self)
     }
 
     // MARK: - Emit helpers
 
-    private func emit(_ event: PebblesEvent) { eventContinuation.yield(event) }
+    // `emit`/`emitState` are internal (not private) so the tool-dispatch extension can surface
+    // tool-driven UI events (the `.searching` state, and Tier-4 cards). One stream still, one
+    // drainer (SPEC N5) — these just yield onto it.
+    func emit(_ event: PebblesEvent) { eventContinuation.yield(event) }
 
     /// Emit a state only when it actually changes — audio deltas fire ~50/s, so re-emitting the
     /// same state would spam the drainer.
-    private func emitState(_ state: PebblesState) {
+    func emitState(_ state: PebblesState) {
         guard state != lastState else { return }
         lastState = state
         eventContinuation.yield(.state(state))
@@ -118,15 +131,16 @@ final class RealtimeManager {
         let micStream = try audioController.micStream()
 
         // GA realtime session config — flat params; the SDK encodes the nested GA wire internally.
-        // Tier 1 ships no tools (they land in Tier 2), so `tools: []`.
+        // Tier 2 wires the tool catalog (`Self.agentTools`) + a persona-with-tools prompt
+        // (`Self.instructions`); the tools are dispatched in RealtimeManager+Tools.swift under N2.
         let configuration = OpenAIRealtimeSessionConfiguration(
             inputAudioFormat: .pcm16,
             inputAudioTranscription: .init(model: "gpt-4o-mini-transcribe"),
-            instructions: personality.instructions,
+            instructions: Self.instructions(personality: personality),
             maxResponseOutputTokens: .int(4096),
             outputModalities: [.audio],
             outputAudioFormat: .pcm16,
-            tools: [],
+            tools: Self.agentTools,
             toolChoice: .auto,
             // Semantic VAD with createResponse:true ⇒ the SERVER auto-fires a response for a
             // spoken user turn; interruptResponse enables barge-in.
@@ -220,8 +234,11 @@ final class RealtimeManager {
                     self.emitState(.listening)
                     if allowBargeIn { audioController.interruptPlayback() }
 
-                case .responseFunctionCallArgumentsDone:
-                    break  // Tier 2: tool dispatch (handleFunctionCall) hooks in here.
+                case .responseFunctionCallArgumentsDone(let event):
+                    // Tier 2 dispatch. web_search is slow → show `.searching` while it runs
+                    // (handleFunctionCall returns immediately for it; the work runs off-loop).
+                    if event.name == "web_search" { self.emitState(.searching) }
+                    await self.handleFunctionCall(event, session: realtimeSession)
 
                 case .responseDone:
                     self.responseInFlight = false
