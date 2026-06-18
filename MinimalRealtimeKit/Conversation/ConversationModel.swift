@@ -47,6 +47,13 @@ final class ConversationModel {
     // must never read observed storage. This copy keeps that hot path entirely off observation.
     @ObservationIgnored private var levelState: PebblesState = .dormant
 
+    // MARK: - Router seam to the card surface (Tier 4; set by the stage, never imported here)
+    /// Wired by `StageViewController` to `SurfaceStore.present(request:)`. A clean inversion of
+    /// control: a `render_component` event arrives here as `.component`, and the model forwards it to
+    /// the canvas without ever knowing about the store. `@ObservationIgnored` — it's a one-time wiring
+    /// closure, not UI state.
+    @ObservationIgnored var componentSurfaceRouter: ((ComponentRequest?) -> Void)?
+
     // MARK: - Init: start the ONE event drainer (N5)
     init() {
         let mgr = RealtimeManager()
@@ -122,6 +129,14 @@ final class ConversationModel {
         Task { await mgr.setMuted(on) }
     }
 
+    /// An interactive `choice` card tap is a NEW USER TURN — NOT a second response on the
+    /// render_component turn (that would break N2's one-response-per-turn invariant). It forwards to
+    /// the manager's `sendUserChoice` (response.create SITE 2 of 4); this method adds none of its own.
+    func sendUserChoice(_ text: String) {
+        let mgr = manager
+        Task { await mgr.sendUserChoice(text) }
+    }
+
     // MARK: - The drainer map: each of the 6 v1 events → an @Observable mutation
     private func apply(_ event: PebblesEvent) {
         switch event {
@@ -141,6 +156,10 @@ final class ConversationModel {
         case .error(let message):
             hint = message
             setState(.dormant)
+        case .component(let request):
+            // Route the model-selected card to the canvas (via the stage-wired seam). A nil request
+            // (malformed tool call) still flows so the canvas shows the mandatory fallback (N3).
+            componentSurfaceRouter?(request)
         }
     }
 

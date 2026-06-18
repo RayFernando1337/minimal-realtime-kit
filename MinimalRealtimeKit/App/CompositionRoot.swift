@@ -16,6 +16,11 @@ import Foundation
 /// the app registers agent-driven components.
 enum CompositionRoot {
 
+    /// The ONE source of truth for what's on the glass (T4.3). A process-lifetime singleton: the
+    /// stage reads it (and wires the model's router to its `present`), so audio/session lifetime stays
+    /// independent of any view (N4).
+    @MainActor static let surfaceStore = SurfaceStore()
+
     /// Register the app's component builders (app-owned; the model never touches this map).
     /// Each `register` maps a versioned `ComponentID` to a builder that decodes → validates →
     /// hosts. The total fallback (N3) lives in `ComponentFactory.make`, so an unregistered id

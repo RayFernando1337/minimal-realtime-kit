@@ -18,7 +18,10 @@ nonisolated enum PebblesEvent: Sendable {
     case pebblesTranscriptFinal(String)
     /// The session hit an error; the consumer should go dormant.
     case error(String)
+    /// A `render_component` tool call: a model-selected card to put on the glass. A `nil` request is
+    /// a malformed / undecodable tool call — the drainer still routes it so the canvas can show the
+    /// mandatory fallback (N3). `ComponentRequest` is `Sendable`, so it rides the stream unchanged.
+    case component(ComponentRequest?)
 
-    // Tier 4 (the agent-driven factory) adds `case component(ComponentRequest?)` here to
-    // carry model-selected cards. Intentionally cut for v1: `.tone`, `.note`, `.memoryChanged`.
+    // Intentionally cut for v1: `.tone`, `.note`, `.memoryChanged`.
 }

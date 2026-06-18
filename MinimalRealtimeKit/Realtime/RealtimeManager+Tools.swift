@@ -55,6 +55,16 @@ extension RealtimeManager {
             output = Self.jsonString(["now": now])
             contextSyncNote = nil
 
+        case "render_component":
+            // A UI tool: decode the model's selection (lenient — bad/garbled args → nil), then
+            // surface it as a card via the ONE event stream (N5). A nil request still flows so the
+            // canvas can show the mandatory fallback (N3). This is an INLINE tool — it adds NO
+            // response.create of its own; it falls through to the single inline tail below (N2).
+            let request = Self.decodeArguments(ComponentRequest.self, from: event.arguments)
+            self.emit(.component(request))
+            output = Self.jsonString(["ok": request != nil])
+            contextSyncNote = nil
+
         default:
             // Lenient fallback: unknown tool → a graceful output, never a crash/wedge.
             output = Self.jsonString(["error": "unknown tool"])

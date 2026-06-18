@@ -6,10 +6,11 @@
 //  ships a callback, only the option ids (data).
 //
 //  TURN-FLOW (realtime-delicate): the FIRST tap is LOCAL and INSTANT — the view marks the
-//  chosen option, disables further taps, and calls `onPick(option.id)`. It does NOT wait on
-//  the model and shows no spinner. The pick travels app-side and is later sent as a NEW USER
-//  TURN by Tier 4's wiring — NOT a second response on the render_component turn (that would
-//  break N2's one-response-per-turn invariant). That bridge is out of scope here.
+//  chosen option, disables further taps, and calls `onPick` with the option's HUMAN LABEL (so the
+//  resulting user turn reads naturally, e.g. "Yes, book it" rather than an opaque id). It does NOT
+//  wait on the model and shows no spinner. T4.3 wires that pick to `ConversationModel.sendUserChoice`,
+//  which sends it as a NEW USER TURN (response.create SITE 2) — NOT a second response on the
+//  render_component turn (that would break N2's one-response-per-turn invariant).
 
 import SwiftUI
 
@@ -57,8 +58,8 @@ enum ChoiceComponent {
 
 struct ChoiceComponentView: View {
     let payload: ChoicePayload
-    /// Invoked with the chosen option's id on the first tap. The builder wires this to
-    /// `FactoryContext.onUserChoice`.
+    /// Invoked with the chosen option's HUMAN LABEL on the first tap (so the user turn it becomes
+    /// reads naturally). The builder wires this to `FactoryContext.onUserChoice`.
     let onPick: (String) -> Void
 
     /// The locally-chosen option id. Set instantly on first tap (no model round-trip).
@@ -118,8 +119,9 @@ struct ChoiceComponentView: View {
         .accessibilityAddTraits(isPicked ? [.isSelected] : [])
     }
 
-    /// First tap wins: mark the option locally (instant — no model wait, no spinner), then
-    /// hand the chosen id to the app via `onPick`. Subsequent taps no-op.
+    /// First tap wins: mark the option locally by id (instant — no model wait, no spinner), then hand
+    /// the chosen option's LABEL to the app via `onPick` so the new user turn reads naturally.
+    /// Subsequent taps no-op.
     private func pick(_ option: ChoicePayload.Option) {
         guard pickedID == nil else { return }
         if reduceMotion {
@@ -127,6 +129,6 @@ struct ChoiceComponentView: View {
         } else {
             withAnimation(.easeInOut(duration: 0.2)) { pickedID = option.id }
         }
-        onPick(option.id)
+        onPick(option.label)
     }
 }

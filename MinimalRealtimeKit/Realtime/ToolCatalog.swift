@@ -79,6 +79,38 @@ extension RealtimeManager {
             "additionalProperties": false
         ]
 
+        // render_component: the agent draws a small card on the glass. The allowed `id` set is
+        // DERIVED from `ComponentID.allCases` (SINGLE SOURCE OF TRUTH — the schema can never drift
+        // from what the registry can build). `payload` is an OPEN object each card validates itself;
+        // a wrong shape / unknown id degrades to the mandatory fallback (N3), never a crash.
+        let renderComponentSchema: [String: AIProxyJSONValue] = [
+            "type": "object",
+            "properties": [
+                "id": [
+                    "type": "string",
+                    "enum": .array(ComponentID.allCases.map { .string($0.rawValue) }),
+                    "description": .string("Which card to render. note.v1 = a short titled note; "
+                        + "choice.v1 = a prompt with 2-4 tappable options (use when you want the person "
+                        + "to pick — their tap comes back as a new user turn); stat_card.v1 = a hero "
+                        + "number with optional supporting tiles.")
+                ],
+                "payload": [
+                    "type": "object",
+                    "description": .string("The card's DATA (the shape depends on id). note: {title, "
+                        + "body?, meta?, kind?}; choice: {prompt, options:[{id,label,systemImage?}]}; "
+                        + "stat_card: {metric, eyebrow?, title?, body?, chip?, modules:[{label,value}]}. "
+                        + "Pass DATA only — never code, HTML, or expressions.")
+                ],
+                "render_hint": [
+                    "type": "string",
+                    "enum": ["floating", "replaceCurrent", "inList"],
+                    "description": "Optional placement hint; usually omit it."
+                ]
+            ],
+            "required": ["id", "payload"],
+            "additionalProperties": false
+        ]
+
         return [
             .function(.init(
                 name: "get_time",
@@ -93,6 +125,14 @@ extension RealtimeManager {
                     + "that.\") so they're not sitting in silence. When the result comes back, give "
                     + "the short version in your own voice and name where it came from.",
                 parameters: searchSchema
+            )),
+            .function(.init(
+                name: "render_component",
+                description: "Draw a small card on the glass to SHOW something — a note, a choice "
+                    + "the person can tap, or a stat card. Pick an `id` from the allowed set and fill "
+                    + "`payload` with DATA only. Keep speaking; the card supports your words, it "
+                    + "doesn't replace them.",
+                parameters: renderComponentSchema
             ))
         ]
     }
@@ -124,6 +164,10 @@ extension RealtimeManager {
           { "query", "results": [ { "title", "url", "snippet" } ] } or a { "status", "message" }
           envelope. Read the snippets and answer in YOUR voice; never read JSON or URLs aloud. If it
           comes back "unconfigured", empty, or errored, just say you couldn't look it up right now.
+        - render_component(id, payload): draw a small card on the glass to SHOW something — a note,
+          a tappable choice, or a stat card. Pick an `id` (note.v1 / choice.v1 / stat_card.v1) and
+          fill `payload` with DATA only (no code/HTML). Keep talking; the card supports your words.
+          Use choice.v1 when you want the person to pick — their tap returns as a new user turn.
         """
     }
 }

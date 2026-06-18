@@ -4,7 +4,7 @@
 //
 //        ┌─────────────────────────────────────────────┐  z-order, back → front
 //        │ foregroundHost  UIHostingController(SwiftUI) │  captions, controls, dormant wake-catcher
-//        │ cardCanvas      PassthroughContainerView    │  the cards layer (EMPTY placeholder for v1)
+//        │ floatingCanvas  FloatingCanvasController     │  the agent-driven cards (T4.3)
 //        │ skView          SKView(CharacterScene)      │  the character (full-bleed)
 //        │ backgroundHost  UIHostingController(SwiftUI) │  calm dark gradient
 //        └─────────────────────────────────────────────┘
@@ -25,20 +25,11 @@ import SwiftUI
 import UIKit
 import SpriteKit
 
-// MARK: - Passthrough card layer (transparent to touches in empty space)
-
-/// The cards layer: transparent to touches in empty space, claims only its real children. For v1 it
-/// has NO children (it renders nothing) — a later card (Tier 4) installs a FloatingCanvas here that
-/// renders the agent-driven cards. The passthrough behavior is what keeps the reversed-priority
-/// routing working: a touch that misses every card falls through to the orb / foreground beneath.
-final class PassthroughContainerView: UIView {
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
-        return hit === self ? nil : hit   // empty space → fall through to the layers below
-    }
-}
-
 // MARK: - Reversed-priority root
+//
+// NOTE: the cards layer is a `PassthroughContainerView` — it returns nil in empty space so non-card
+// touches fall through to the orb routing / foreground. That type now lives in `FloatingCanvas.swift`
+// (the canvas owns it); the root below only needs a `UIView` reference to it via `cardCanvas`.
 
 /// Stage root. Cards win first (a card over the orb stays draggable); then a precise orb tap goes to
 /// the character; then everything else falls through to the greedy foreground host, which routes it
@@ -70,7 +61,9 @@ final class StageViewController: UIViewController {
 
     private var backgroundHost: UIHostingController<AnyView>?
     private var foregroundHost: UIHostingController<AnyView>?
-    private let cardCanvas = PassthroughContainerView()
+    /// The agent-driven cards layer (T4.3). Reads the shared `SurfaceStore`; a `choice` pick rides
+    /// back to the model as a new user turn. The model owns audio/session, never this canvas (N4).
+    private let floatingCanvas: FloatingCanvasController
     private let skView = SKView()
     private let scene = CharacterScene(size: CGSize(width: 402, height: 874))
 
@@ -85,6 +78,12 @@ final class StageViewController: UIViewController {
 
     init(conversation: ConversationModel) {
         self.conversation = conversation
+        // The cards canvas reads the shared store; an interactive `choice` pick rides back to the
+        // model as a NEW user turn (sendUserChoice — response.create SITE 2, never a new one).
+        self.floatingCanvas = FloatingCanvasController(
+            store: CompositionRoot.surfaceStore,
+            onUserChoice: { [weak conversation] text in conversation?.sendUserChoice(text) }
+        )
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -107,10 +106,13 @@ final class StageViewController: UIViewController {
         configureScene()
         installBackgroundHost()   // back of the sandwich
         installSKView()           // the character, full-bleed
-        installCardCanvas()       // the cards, passthrough (empty for v1)
+        installCardCanvas()       // the agent-driven cards (passthrough)
         installForegroundHost()   // front of the sandwich
         wireRouting()
         observeReduceMotion()
+        #if DEBUG
+        seedDemoCardsIfRequested()   // MRK_DEMO_CARDS=1 → render cards on the glass with no session
+        #endif
         // Kick the first observation-tracked pass. iOS 26 re-invokes updateProperties() automatically
         // when the read @Observable values change.
         setNeedsUpdateProperties()
@@ -130,6 +132,10 @@ final class StageViewController: UIViewController {
     override func updateProperties() {
         super.updateProperties()
         scene.apply(state: resolvedState)
+        // Register the surface dependency so iOS-26 observation re-invokes this when cards change,
+        // then reconcile the canvas. The ~50×/s audio meter stays OFF this path (N6).
+        _ = CompositionRoot.surfaceStore.floatingSurfaces
+        floatingCanvas.sync()
     }
 
     // MARK: Setup
@@ -173,14 +179,14 @@ final class StageViewController: UIViewController {
         pin(skView, to: view)   // full-bleed: the character roams the whole screen
     }
 
-    /// Install the passthrough card canvas ABOVE the SKView and BELOW the foreground host. It returns
-    /// nil in empty space so it never steals orb routing or foreground controls. EMPTY for v1.
+    /// Install the cards canvas ABOVE the SKView and BELOW the foreground host. Its
+    /// `PassthroughContainerView` returns nil in empty space so it never steals orb routing or
+    /// foreground controls; it renders the shared `SurfaceStore` as draggable glass cards (T4.3).
     private func installCardCanvas() {
-        cardCanvas.backgroundColor = .clear
-        pin(cardCanvas, to: view)
-        // Tier 4 (the agent-driven cards card) adds a FloatingCanvas inside this layer that renders
-        // the SurfaceStore. Until then it draws nothing — the placeholder only preserves the
-        // reversed-priority hit-test seam so dropping cards in later needs no spine change.
+        addChild(floatingCanvas)
+        floatingCanvas.view.backgroundColor = .clear
+        pin(floatingCanvas.view, to: view)
+        floatingCanvas.didMove(toParent: self)
     }
 
     private func installForegroundHost() {
@@ -195,7 +201,13 @@ final class StageViewController: UIViewController {
 
     private func wireRouting() {
         rootView.skView = skView
-        rootView.cardCanvas = cardCanvas
+        rootView.cardCanvas = floatingCanvas.view
+        // Route model-selected cards (the `.component` event) to the shared store. The model never
+        // imports the store — clean inversion of control. A nil request still lands as the mandatory
+        // fallback on the glass (N3). This adds NO response.create (N2).
+        conversation.componentSurfaceRouter = { [weak store = CompositionRoot.surfaceStore] request in
+            store?.present(request: request)
+        }
         rootView.stageWantsTouch = { [weak self] pointInRoot in
             guard let self else { return false }
             // Dormant wake is handled by the SwiftUI wake-catcher in the foreground; otherwise claim
@@ -228,6 +240,41 @@ final class StageViewController: UIViewController {
         scene.reduceMotion = UIAccessibility.isReduceMotionEnabled
         scene.apply(state: conversation.state)   // re-resolve the pose (zeroes breath/bounce)
     }
+
+    #if DEBUG
+    // MARK: Screenshot/QA — seed representative cards with no live session
+
+    /// `SIMCTL_CHILD_MRK_DEMO_CARDS=1` (→ env `MRK_DEMO_CARDS`) seeds a representative set straight
+    /// into the shared store so cards render headlessly (no key/mic): a `stat_card`, an interactive
+    /// `choice`, AND a malformed tool call (a nil request → the mandatory "Couldn't show that"
+    /// fallback on the glass, proving N3). The first `updateProperties()` pass syncs them onto the
+    /// canvas. Inert when unset; never touches audio/session and adds no response.create.
+    private func seedDemoCardsIfRequested() {
+        guard ProcessInfo.processInfo.environment["MRK_DEMO_CARDS"] == "1" else { return }
+        let store = CompositionRoot.surfaceStore
+
+        store.present(request: ComponentRequest(id: .statCard, payload: .object([
+            "eyebrow": .string("THIS WEEK"),
+            "metric": .string("$1,240"),
+            "title": .string("Travel budget"),
+            "modules": .array([
+                .object(["label": .string("Flights"), "value": .string("$820")]),
+                .object(["label": .string("Hotel"), "value": .string("$420")]),
+            ]),
+        ])))
+
+        store.present(request: ComponentRequest(id: .choice, payload: .object([
+            "prompt": .string("Want me to book the 9am?"),
+            "options": .array([
+                .object(["id": .string("book"), "label": .string("Yes, book it")]),
+                .object(["id": .string("hold"), "label": .string("Not yet")]),
+            ]),
+        ])))
+
+        // A malformed / undecodable tool call → nil request → the mandatory fallback card (N3 on glass).
+        store.present(request: nil)
+    }
+    #endif
 
     // MARK: Layout helper
 
