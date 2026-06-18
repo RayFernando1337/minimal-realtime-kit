@@ -13,7 +13,7 @@ device Keychain and used directly (see [Bring your own key](#bring-your-own-key)
   it and it stops).
 - **Tool calling with discipline** — exactly **one `response.create` per tool turn**, and the
   inline-vs-deferred (fast-vs-slow tool) split. Ships with `get_time` (inline) and `web_search`
-  (deferred, BYO/stubbed).
+  (deferred, BYO EXA key — off until you paste one).
 - **Agent-driven cards via a data-only factory** — the model picks a versioned id + a typed JSON
   payload (**data, never code**) and the app renders a card, with a **total mandatory fallback** so a
   bad/unknown selection can never crash or wedge the UI.
@@ -49,8 +49,25 @@ The key never ships and never leaves the device:
 - A `RealtimeCredentialProvider` seam (`PastedKeyProvider`) hands the realtime client a bearer
   credential, so an **ephemeral-token** backend can be added later without touching the client.
 - `web_search` ships **no key**: it's a deferred client function behind a `WebSearchProvider` seam that
-  defaults to a graceful "not configured" response. Implement the seam (e.g. Exa/Brave/Tavily or the
-  OpenAI Responses API) and inject your own provider to enable it.
+  defaults to a graceful "not configured" response. Paste your own **EXA key** in-app to enable it (see
+  [Optional: fast web search via EXA](#optional-fast-web-search-via-exa)), or implement the seam for
+  another provider (Brave/Tavily, the OpenAI Responses API, …).
+
+### Optional: fast web search via EXA
+
+`web_search` is a **deferred client tool** behind a `WebSearchProvider` seam. Out of the box it returns
+a graceful "not configured" response, so the kit runs with just your OpenAI key. To turn it on, **bring
+your own [EXA](https://exa.ai) key** — no key ships in the repo:
+
+- In-app, open the key screen and paste your EXA key under **Web search (optional)**.
+- The key is stored **only in the Keychain** (same as your OpenAI key) — never `UserDefaults`, never a
+  file, never logged, and it never ships.
+- When set, `ExaWebSearchProvider` reads the key fresh per call and hits
+  [`api.exa.ai/search`](https://exa.ai/docs/reference/search) **directly** with `type: "instant"` —
+  EXA's sub-200ms mode built for real-time/voice — then hands the model a compact `{title, url, snippet}`
+  list to answer from.
+- Get a key at [dashboard.exa.ai/api-keys](https://dashboard.exa.ai/api-keys). Remove it anytime with
+  **Forget EXA key** and `web_search` drops back to "not configured".
 
 ### Optional: route through AIProxy (keep your key off-device)
 
@@ -124,8 +141,8 @@ reach the character behind it.
 Tiers 0–4 are implemented and verified by the headless gates (Debug **and** Release build on an iOS 26
 sim; the `response.create` count audit; a repo-wide secret scan; simulator screenshots of each state and
 the cards). The **live** voice loop — barge-in, mute-keeps-session, a live tool call, a model-emitted
-card — needs a real key + mic and is the owed manual check. `web_search` is intentionally unconfigured
-until you inject a provider.
+card — needs a real key + mic and is the owed manual check. `web_search` stays "not configured" until
+you paste your own EXA key (the repo ships none); a live EXA query needs that key + the realtime loop.
 
 ## License
 

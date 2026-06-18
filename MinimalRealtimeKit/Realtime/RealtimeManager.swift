@@ -22,9 +22,10 @@ final class RealtimeManager {
     private let provider: RealtimeCredentialProvider
     private let personality: Personality
     /// Fulfills `web_search` (a deferred CLIENT tool — NOT the SDK's hosted `.webSearch`).
-    /// Defaults to the stub that returns a graceful "unconfigured" envelope; inject your own to
-    /// add real search. Internal so the tool-dispatch extension can reach it. (SPEC N1: keep any
-    /// key in the Keychain, never here.)
+    /// Defaults to `ExaWebSearchProvider`, which reads a BYO EXA key from the Keychain per call
+    /// and returns a graceful "unconfigured" envelope when none is stored (so the kit still runs
+    /// key-free). Inject another provider to swap services. Internal so the tool-dispatch
+    /// extension can reach it. (SPEC N1: the key lives in the Keychain, never here.)
     let webSearch: WebSearchProvider
 
     // MARK: - Live session + audio (owned here — N4; a view/VC must never touch these)
@@ -55,7 +56,7 @@ final class RealtimeManager {
     nonisolated init(
         provider: RealtimeCredentialProvider = PastedKeyProvider(),
         personality: Personality = .default,
-        webSearch: WebSearchProvider = UnconfiguredWebSearchProvider()
+        webSearch: WebSearchProvider = ExaWebSearchProvider()
     ) {
         self.provider = provider
         self.personality = personality

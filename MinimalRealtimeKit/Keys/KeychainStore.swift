@@ -27,6 +27,10 @@ nonisolated enum KeychainStore {
     /// (service, account), so additional secrets can be added later via a distinct account.
     static let openAIKeyAccount = "openai_api_key"
 
+    /// Logical account for the user's pasted EXA key (powers the optional `web_search` tool —
+    /// `ExaWebSearchProvider`). Distinct account, same (service, account) keying — BYO + N1.
+    static let exaKeyAccount = "exa_api_key"
+
     /// Service scopes the items to this app. Derived from the bundle id; the fallback is a
     /// neutral, non-secret placeholder (never a real bundle prefix).
     static var service: String { Bundle.main.bundleIdentifier ?? "com.example.MinimalRealtimeKit" }
