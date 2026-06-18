@@ -218,7 +218,7 @@ struct StageForeground: View {
     /// The big control's label, reflecting the live state.
     private var controlLabel: String {
         switch convo.state {
-        case .dormant:    return convo.hasKey ? "Connect" : "Add API Key"
+        case .dormant:    return convo.hasKey ? "Connect" : "Add OpenAI API Key"
         case .connecting: return "Connecting\u{2026}"
         case .idle:       return "Stop"
         case .listening:  return "Listening"

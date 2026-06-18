@@ -24,15 +24,17 @@ device Keychain and used directly (see [Bring your own key](#bring-your-own-key)
 
 - **Xcode 26+** and an **iOS 26 simulator or device** (deployment target is iOS 26.0; an iOS 18 sim
   cannot install it).
-- An **OpenAI API key** with Realtime access (yours — nothing is bundled).
+- An **OpenAI API key** with Realtime access (yours — nothing is bundled). Get one at
+  [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
 - One Swift Package dependency, resolved automatically: [AIProxySwift](https://github.com/lzell/AIProxySwift) `0.153.0`.
 
 ## Run
 
 1. Open `MinimalRealtimeKit.xcodeproj` in Xcode.
 2. Select the `MinimalRealtimeKit` scheme and an iOS 26 simulator (e.g. iPhone 17 Pro).
-3. Build & run. On first launch tap **Add API Key**, paste your OpenAI key (stored in the Keychain),
-   then tap to connect and start talking.
+3. Build & run. On first launch tap **Add OpenAI API Key**, paste your OpenAI key from
+   [platform.openai.com/api-keys](https://platform.openai.com/api-keys) (stored in the Keychain and used
+   directly against OpenAI), then tap to connect and start talking.
 
 > The mic + live realtime loop need a real key and a microphone, so the conversation can't be exercised
 > headlessly. The build + simulator-screenshot + code-audit loop is the project's safety net (there is no
@@ -49,6 +51,27 @@ The key never ships and never leaves the device:
 - `web_search` ships **no key**: it's a deferred client function behind a `WebSearchProvider` seam that
   defaults to a graceful "not configured" response. Implement the seam (e.g. Exa/Brave/Tavily or the
   OpenAI Responses API) and inject your own provider to enable it.
+
+### Optional: route through AIProxy (keep your key off-device)
+
+This is **not** what v1 ships — it's an alternative for when you outgrow the experimentation kit.
+
+- **Why.** By default the app takes the **direct** path: your pasted OpenAI key lives in the device
+  Keychain and connects straight to OpenAI. That's fine for a bring-your-own-key kit, but for a widely
+  shipped app you may prefer that a standing OpenAI key never touch the device at all.
+- **What it is.** AIProxySwift (already the client SDK here) also supports a **proxied / split-key**
+  mode: your real OpenAI key stays in your AIProxy dashboard, and the app ships only a **partial key +
+  service URL** — neither of which is your OpenAI key.
+- **How to switch (one line of code).** Replace the single
+  `AIProxy.openAIDirectService(unprotectedAPIKey:)` call in `Realtime/RealtimeManager.swift` with
+  `AIProxy.openAIService(partialKey:serviceURL:)`, supplying the partial key + service URL from your
+  AIProxy dashboard. For the simulator only, add the DeviceCheck bypass token — **never ship the bypass
+  token.**
+- **Setup.** Create an AIProxy account, add your OpenAI key there, then follow the
+  [AIProxy integration guide](https://www.aiproxy.com/docs/integration-guide.html).
+- **Another off-device option.** An **ephemeral-token** backend works too: the
+  `RealtimeCredentialProvider` seam already accepts a short-lived bearer credential minted by your own
+  server, so the client never sees a standing key.
 
 ## Architecture
 

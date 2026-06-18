@@ -90,7 +90,7 @@ struct KeyEntryView: View {
             }
 
             Section {
-                SecureField("Paste your key", text: $store.draft)
+                SecureField("Paste your OpenAI key (sk-\u{2026})", text: $store.draft)
                     .textContentType(.password)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
@@ -103,10 +103,13 @@ struct KeyEntryView: View {
                     store.save()
                 }
                 .disabled(!store.canSave)
+
+                Link("Get a key at platform.openai.com", destination: URL(string: "https://platform.openai.com/api-keys")!)
+                    .font(.callout)
             } header: {
                 Text("OpenAI API key")
             } footer: {
-                Text("Your key is stored only in this device's Keychain and is used directly to connect. It never leaves your device and is never shown again here.")
+                Text("Your key is stored only in this device's Keychain and is used directly to connect to OpenAI. It never leaves your device and is never shown again here.")
             }
 
             if store.hasStoredKey {
@@ -126,7 +129,7 @@ struct KeyEntryView: View {
                 }
             }
         }
-        .navigationTitle("API Key")
+        .navigationTitle("OpenAI API Key")
     }
 
     // MARK: Pieces
