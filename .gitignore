@@ -1,0 +1,34 @@
+# .gitignore — minimal-realtime-kit
+# A bring-your-own-key (BYOK) open-source Swift/iOS starter kit.
+# Distilled from snippets/config/gitignore.template + standard GitHub Swift/Xcode ignores.
+
+# === macOS / Finder junk ===
+.DS_Store
+
+# === Xcode user & build artifacts ===
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+DerivedData/
+build/
+
+# === Swift Package Manager ===
+.build/
+.spm-cache/
+
+# === BRING-YOUR-OWN-KEY: never commit real secrets ===
+# Copy the *.example / *.template files, then fill in YOUR OWN keys locally.
+Config/Secrets.xcconfig
+**/*.local.xcconfig
+**/*.local.swift
+Secrets.swift
+Secrets.local.*
+*.secrets
+
+# === Cloned reference projects (inspiration only — never part of the app target) ===
+reference/
+
+# === Always keep the redacted template/example files tracked (defensive) ===
+!**/*.example
+!**/*.template

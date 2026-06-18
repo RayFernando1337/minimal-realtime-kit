@@ -1,0 +1,33 @@
+{
+  "_comment": "OPTIONAL (not needed for the minimal MVP). Realtime ALSO supports MCP tools and built-in connectors that are executed BY THE REALTIME API itself (unlike client `function` tools). Attach in session.update.session.tools or response.create.response.tools. Docs: https://developers.openai.com/api/docs/guides/realtime-mcp",
+  "type": "session.update",
+  "session": {
+    "tools": [
+      {
+        "_kind": "remote MCP server (API calls it for you)",
+        "type": "mcp",
+        "server_label": "stripe",
+        "server_url": "https://mcp.stripe.com",
+        "authorization": "<<USER_OAUTH_OR_ACCESS_TOKEN>>",
+        "require_approval": "never",
+        "allowed_tools": ["create_payment_link"],
+        "server_description": "Stripe billing tools",
+        "defer_loading": false
+      },
+      {
+        "_kind": "built-in connector (same shape, connector_id instead of server_url)",
+        "type": "mcp",
+        "server_label": "google_calendar",
+        "connector_id": "connector_googlecalendar",
+        "authorization": "<<USER_OAUTH_ACCESS_TOKEN>>",
+        "require_approval": "never"
+      }
+    ],
+    "tool_choice": "auto"
+  },
+  "_notes": {
+    "execution": "The API runs the tool. Your client does NOT return function_call_output for mcp tools; it listens for MCP lifecycle events (e.g. response.mcp_list_tools / mcp tool-call / approval-request) and may send an approval response.",
+    "connectors": ["connector_googlecalendar", "connector_gmail", "connector_dropbox", "(others)"],
+    "force_a_tool": "tool_choice can be { type:'mcp', server_label:'stripe', name:'create_payment_link' } to force a specific MCP tool"
+  }
+}

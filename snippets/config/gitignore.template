@@ -1,0 +1,27 @@
+# gitignore.template  —  copy to the NEW repo root as `.gitignore`
+# (named .template here so it doesn't accidentally govern this staging folder)
+# Distilled from the source app's .gitignore (AIProxyRealtime2Demo/.gitignore:1-17),
+# hardened for a BRING-YOUR-OWN-KEY open-source repo.
+
+# === macOS / Xcode build + tooling junk ===
+.DS_Store
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+.spm-cache/
+
+# === BRING-YOUR-OWN-KEY: never commit real secrets ===
+# Copy Config/Secrets.xcconfig.example -> Config/Secrets.xcconfig and fill in YOUR keys.
+Config/Secrets.xcconfig
+Config/*.local.xcconfig
+
+# Any *.local.swift "paste-your-key" dev stopgap files compiled into Debug only.
+*.local.swift
+
+# Local key scratch / in-app exported credentials.
+Secrets.local.*
+*.secrets
+
+# === Cloned reference projects (inspiration only — never part of the app target) ===
+reference/

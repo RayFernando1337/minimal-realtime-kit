@@ -1,0 +1,62 @@
+{
+  "_comment": "GA (2026) Realtime session.update payload. Note the NESTED audio.input/output shape and output_modalities (these replaced the flat beta fields modalities/voice/input_audio_format/turn_detection/input_audio_transcription). Send over the WebRTC data channel `oai-events` or the WebSocket. Docs: https://platform.openai.com/docs/guides/realtime-conversations + https://platform.openai.com/docs/guides/realtime-vad",
+  "type": "session.update",
+  "session": {
+    "type": "realtime",
+    "model": "gpt-realtime-2",
+    "instructions": "You are a calm, concise voice companion. Confirm understanding before taking actions. Keep replies short.",
+    "output_modalities": ["audio"],
+    "audio": {
+      "input": {
+        "format": { "type": "audio/pcm", "rate": 24000 },
+        "noise_reduction": { "type": "near_field" },
+        "transcription": { "model": "gpt-4o-mini-transcribe", "language": "en" },
+        "turn_detection": {
+          "type": "semantic_vad",
+          "eagerness": "medium",
+          "create_response": true,
+          "interrupt_response": true
+        }
+      },
+      "output": {
+        "format": { "type": "audio/pcm" },
+        "voice": "marin",
+        "speed": 1.0
+      }
+    },
+    "tools": [
+      {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Get the current weather for a city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": { "type": "string", "description": "City name, e.g. 'Paris'." }
+          },
+          "required": ["city"]
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": true,
+    "max_output_tokens": "inf",
+    "reasoning": { "effort": "low" }
+  },
+  "_alternatives": {
+    "server_vad_turn_detection": {
+      "type": "server_vad",
+      "threshold": 0.5,
+      "prefix_padding_ms": 300,
+      "silence_duration_ms": 500,
+      "create_response": true,
+      "interrupt_response": true
+    },
+    "push_to_talk": "set audio.input.turn_detection to null, then drive input_audio_buffer.commit + response.create yourself",
+    "own_the_response_create": "set turn_detection.create_response=false to enforce exactly ONE response.create per turn",
+    "audio_format_options": ["audio/pcm (24000 only)", "audio/pcmu (G.711 u-law)", "audio/pcma (G.711 A-law)"],
+    "transcription_model_options": ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-mini-transcribe-2025-12-15", "gpt-4o-transcribe", "gpt-4o-transcribe-diarize", "gpt-realtime-whisper"],
+    "reasoning_effort_options": ["minimal", "low", "medium", "high", "xhigh"],
+    "voice_options": ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
+  }
+}
